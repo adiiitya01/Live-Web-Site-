@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Messages — ReUse Market</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/" class="nav-logo">ReUse<span>Market</span></a>
+  <div class="nav-actions">
+    <div id="nav-auth-btns" style="display:flex;gap:8px"><a href="/login.html" class="btn btn-outline btn-sm">Login</a></div>
+    <div id="nav-user-menu" style="display:none;align-items:center;gap:6px">
+      <a href="/post-ad.html" id="nav-post-btn" class="btn btn-primary btn-sm" style="display:none">+ Sell</a>
+      <a href="/chat.html" class="nav-icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span id="unread-badge" class="badge" style="display:none">0</span></a>
+      <a href="/dashboard.html" class="nav-icon-btn"><div id="nav-avatar" style="width:32px;height:32px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">U</div></a>
+    </div>
+  </div>
+</nav>
+
+<main class="main">
+  <div class="chat-page">
+    <!-- Conversations List -->
+    <div class="conversations-panel">
+      <div class="conversations-header">
+        Messages
+        <div style="font-size:12px;color:var(--text-muted);font-family:var(--font-body);font-weight:400;margin-top:2px" id="conv-count"></div>
+      </div>
+      <div class="conversations-list" id="conversations-list">
+        <div class="loader"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="chat-area" id="chat-area">
+      <div class="chat-empty">
+        <div class="icon">💬</div>
+        <h3 style="font-family:var(--font-display);font-weight:700;margin-bottom:8px">Your Messages</h3>
+        <p style="font-size:14px">Select a conversation or start chatting<br>with a seller from a product page.</p>
+        <a href="/listings.html" class="btn btn-outline mt-2">Browse Products</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/static/js/main.js"></script>
+<script>
+let socket = null;
+let currentRoom = null;
+let currentOther = null;
+let currentProduct = null;
+
+async function initChat() {
+  await App.init();
+  if (!App.user) { window.location.href = '/login.html?redirect=/chat.html'; return; }
+
+  // Connect socket
+  socket = io({ transports: ['websocket', 'polling'] });
+
+  // Check URL params for direct chat open
+  const userId = Utils.getParam('user');
+  const productId = Utils.getParam('product');
+
+  await loadConversations();
+
+  if (userId) {
+    openChat(parseInt(userId), productId ? parseInt(productId) : null);
+  }
+}
+
+async function loadConversations() {
+  try {
+    const data = await API.get('/api/conversations');
+    const list = document.getElementById('conversations-list');
+    const convs = data.conversations;
+    document.getElementById('conv-count').textContent = `${convs.length} conversation${convs.length !== 1 ? 's' : ''}`;
+
+    if (convs.length === 0) {
+      list.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">No conversations yet</div>`;
+      return;
+    }
+
+    list.innerHTML = convs.map(c => {
+      const other = c.other_user;
+      if (!other) return '';
+      const initial = other.name.charAt(0).toUpperCase();
+      const isActive = currentOther && currentOther.id === other.id;
+      return `<div class="conversation-item ${isActive ? 'active' : ''}" onclick="openChat(${other.id}, ${c.product?.id || null})">
+        <div class="conv-avatar">${initial}</div>
+        <div class="conv-info">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div class="conv-name">${Utils.escapeHtml(other.name)}</div>
+            <div class="conv-time">${Utils.formatDate(c.last_message.timestamp)}</div>
+          </div>
+          ${c.product ? `<div style="font-size:11px;color:var(--primary);font-weight:600;margin-bottom:2px">Re: ${Utils.truncate(c.product.title, 30)}</div>` : ''}
+          <div class="conv-preview">${Utils.escapeHtml(c.last_message.message)}</div>
+        </div>
+        ${c.unread_count > 0 ? `<div class="conv-unread">${c.unread_count}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('conversations-list').innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">Failed to load messages</div>';
+  }
+}
+
+async function openChat(otherId, productId = null) {
+  // Leave old room
+  if (currentRoom) socket.emit('leave', { room: currentRoom });
+
+  currentRoom = `chat-${Math.min(App.user.id, otherId)}-${Math.max(App.user.id, otherId)}-${productId || 0}`;
+  socket.emit('join', { room: currentRoom });
+
+  const chatArea = document.getElementById('chat-area');
+  chatArea.innerHTML = `<div style="display:flex;flex-direction:column;height:100%">
+    <div class="chat-header" id="chat-header">
+      <div style="width:40px;height:40px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700" id="chat-avatar">?</div>
+      <div>
+        <div style="font-weight:600" id="chat-name">Loading...</div>
+        ${productId ? `<a href="/product.html?id=${productId}" style="font-size:12px;color:var(--primary);text-decoration:none" id="chat-product">View Product</a>` : ''}
+      </div>
+    </div>
+    <div class="chat-messages" id="chat-messages">
+      <div class="loader"><div class="spinner"></div></div>
+    </div>
+    <div class="chat-input-bar">
+      <input class="chat-input" type="text" id="message-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}" autocomplete="off">
+      <button class="btn btn-primary" onclick="sendMessage()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9 22,2"/></svg>
+      </button>
+    </div>
+  </div>`;
+
+  try {
+    const data = await API.get(`/api/messages?user_id=${otherId}${productId ? '&product_id=' + productId : ''}`);
+    currentOther = data.other_user;
+    if (currentOther) {
+      document.getElementById('chat-avatar').textContent = currentOther.name.charAt(0).toUpperCase();
+      document.getElementById('chat-name').textContent = currentOther.name;
+    }
+    renderMessages(data.messages);
+    loadConversations();
+    App.updateUnreadBadge();
+  } catch (e) {
+    document.getElementById('chat-messages').innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted)">Failed to load messages</div>';
+  }
+
+  // Listen for new messages
+  socket.off('receive_message');
+  socket.on('receive_message', (msg) => {
+    appendMessage(msg.message, msg.sender_name !== App.user.name ? 'received' : 'sent', msg.sender_name, msg.timestamp);
+  });
+
+  window._currentOtherId = otherId;
+  window._currentProductId = productId;
+}
+
+function renderMessages(messages) {
+  const container = document.getElementById('chat-messages');
+  if (messages.length === 0) {
+    container.innerHTML = `<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:14px;text-align:center;padding:24px">
+      Start the conversation! Ask about the item, price, or arrange a meetup.
+    </div>`;
+    return;
+  }
+  container.innerHTML = messages.map(m => {
+    const isSent = m.sender_id === App.user.id;
+    return `<div style="display:flex;flex-direction:column;align-items:${isSent ? 'flex-end' : 'flex-start'}">
+      ${!isSent ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">${Utils.escapeHtml(m.sender_name)}</div>` : ''}
+      <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+        ${Utils.escapeHtml(m.message)}
+        <div class="message-time">${Utils.formatDate(m.timestamp)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  container.scrollTop = container.scrollHeight;
+}
+
+function appendMessage(text, type, senderName, timestamp) {
+  const container = document.getElementById('chat-messages');
+  // Remove empty state if present
+  const emptyState = container.querySelector('div[style*="flex:1"]');
+  if (emptyState) emptyState.remove();
+
+  const div = document.createElement('div');
+  div.style.cssText = `display:flex;flex-direction:column;align-items:${type === 'sent' ? 'flex-end' : 'flex-start'}`;
+  div.innerHTML = `
+    ${type === 'received' ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">${Utils.escapeHtml(senderName || '')}</div>` : ''}
+    <div class="message-bubble ${type}">
+      ${Utils.escapeHtml(text)}
+      <div class="message-time">${Utils.formatDate(timestamp || new Date().toISOString())}</div>
+    </div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('message-input');
+  const text = input?.value.trim();
+  if (!text || !window._currentOtherId) return;
+  input.value = '';
+
+  // Optimistic UI
+  appendMessage(text, 'sent', App.user.name, new Date().toISOString());
+
+  try {
+    await API.post('/api/messages', {
+      receiver_id: window._currentOtherId,
+      product_id: window._currentProductId || null,
+      message: text
+    });
+    // Emit via socket for real-time
+    socket.emit('send_message', {
+      room: currentRoom,
+      message: text,
+      sender_name: App.user.name,
+      timestamp: new Date().toISOString()
+    });
+    loadConversations();
+  } catch (e) {
+    Toast.error('Failed to send message');
+  }
+}
+
+initChat();
+</script>
+</body>
+</html>

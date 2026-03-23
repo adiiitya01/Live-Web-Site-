@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — ReUse Market</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<nav class="nav">
+  <a href="/" class="nav-logo">ReUse<span>Market</span></a>
+  <div class="nav-actions">
+    <div id="nav-auth-btns" style="display:flex;gap:8px"><a href="/login.html" class="btn btn-outline btn-sm">Login</a><a href="/register.html" class="btn btn-primary btn-sm">Sign Up</a></div>
+    <div id="nav-user-menu" style="display:none;align-items:center;gap:6px">
+      <a href="/post-ad.html" id="nav-post-btn" class="btn btn-primary btn-sm" style="display:none">+ Sell</a>
+      <a href="/dashboard.html" class="nav-icon-btn"><div id="nav-avatar" style="width:32px;height:32px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">U</div></a>
+    </div>
+  </div>
+</nav>
+
+<main class="main">
+  <div class="auth-page">
+    <div class="auth-left">
+      <div class="auth-illustration">🛍️</div>
+      <h2>Welcome Back!</h2>
+      <p>Sign in to manage your listings, chat with buyers, and discover great deals near you.</p>
+      <div style="margin-top:32px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px">
+        <div style="background:rgba(255,255,255,0.1);border-radius:12px;padding:14px;text-align:left">
+          <div style="color:#fff;font-weight:600;font-size:13px;margin-bottom:4px">📦 List Items for Free</div>
+          <div style="color:rgba(255,255,255,0.6);font-size:12px">Post unlimited ads at no cost</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.1);border-radius:12px;padding:14px;text-align:left">
+          <div style="color:#fff;font-weight:600;font-size:13px;margin-bottom:4px">💬 Chat Securely</div>
+          <div style="color:rgba(255,255,255,0.6);font-size:12px">Connect directly with buyers & sellers</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.1);border-radius:12px;padding:14px;text-align:left">
+          <div style="color:#fff;font-weight:600;font-size:13px;margin-bottom:4px">❤️ Save Favorites</div>
+          <div style="color:rgba(255,255,255,0.6);font-size:12px">Wishlist items you love</div>
+        </div>
+      </div>
+    </div>
+    <div class="auth-right">
+      <div class="auth-form-wrap">
+        <h2>Sign In</h2>
+        <p>Don't have an account? <a href="/register.html">Create one free</a></p>
+        <form id="login-form" onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input class="form-input" type="email" id="email" placeholder="you@example.com" required autocomplete="email">
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="display:flex;justify-content:space-between">
+              Password <a href="#" style="color:var(--primary);font-weight:400;font-size:12px">Forgot password?</a>
+            </label>
+            <div style="position:relative">
+              <input class="form-input" type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+              <button type="button" onclick="togglePwd('password')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-muted)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="login-error" class="form-error" style="margin-bottom:12px;display:none"></div>
+          <button type="submit" class="btn btn-primary btn-block btn-lg" id="login-btn">Sign In</button>
+        </form>
+        <div class="auth-toggle">
+          New to ReUse Market? <a href="/register.html">Create an account</a>
+        </div>
+        <div style="margin-top:20px;padding:14px;background:var(--primary-light);border-radius:10px;font-size:13px;color:var(--text-muted)">
+          <strong style="color:var(--text)">Demo Accounts:</strong><br>
+          Admin: admin@reusemarket.com / admin123
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/static/js/main.js"></script>
+<script>
+function togglePwd(id) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const btn = document.getElementById('login-btn');
+  const errEl = document.getElementById('login-error');
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  errEl.style.display = 'none';
+  try {
+    await API.post('/api/login', {
+      email: document.getElementById('email').value,
+      password: document.getElementById('password').value
+    });
+    const redirect = Utils.getParam('redirect') || '/dashboard.html';
+    window.location.href = redirect;
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+// Redirect if already logged in
+App.init().then(() => {
+  if (App.user) window.location.href = '/dashboard.html';
+});
+</script>
+</body>
+</html>
