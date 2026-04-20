@@ -132,9 +132,10 @@ Ethical Hacker | Web Developer
 
 ## 📬 Contact
 
-GitHub: https://github.com/adiiitya01  
+GitHub: https://github.com/adiiitya01
 
 LinkedIn: www.linkedin.com/in/aditya-udugade-28147b345
+
 ---
 
 ## ⭐ Support
